@@ -34,9 +34,7 @@ async fn run() -> eyre::Result<()> {
     up.sort_unstable_by_key(|test| test.size);
     down.sort_unstable_by_key(|test| test.size);
 
-    let client = cloudflare::Client::new();
-
-    let metadata = client.get_metadata()?;
+    let metadata = cloudflare::get_metadata()?;
 
     println!("Server Location: `{} {}`", metadata.city, metadata.country);
     println!("Your IP: {}", metadata.client_ip);
@@ -46,7 +44,7 @@ async fn run() -> eyre::Result<()> {
 
     let mut latencies = Vec::new();
     for test in &down {
-        let result = client.meansure_download(test.size, test.iterations).await;
+        let result = cloudflare::meansure_download(test.size, test.iterations).await;
         let (s, l) = result
             .iter()
             .map(|s| (s.0, s.1))
@@ -83,7 +81,7 @@ async fn run() -> eyre::Result<()> {
     all_speeds.clear();
 
     for test in &up {
-        let result = client.meansure_upload(test.size, test.iterations).await;
+        let result = cloudflare::meansure_upload(test.size, test.iterations).await;
         let (s, l) = result
             .iter()
             .map(|s| (s.0, s.1))
