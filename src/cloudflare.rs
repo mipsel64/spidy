@@ -18,9 +18,10 @@ pub async fn meansure_download(size: usize, iterations: usize) -> Vec<(f64, f64)
     for i in 0..iterations {
         match download_async(size).await {
             Ok(result) => {
-                let transfer_time = result.total_time - result.ttfb;
-                let speed_mbps = size_f64 * 8.0 / transfer_time.as_secs_f64() / 1_000_000.0;
-                let latency_ms = (result.ttfb - result.server_processing).as_millis() as f64;
+                let transfer_time = (result.total_time - result.ttfb).as_millis() as f64;
+                let speed_mbps = (size_f64 * 8.0) / (transfer_time / 1000.0) / 1e6;
+                let latency_ms = result.ttfb.as_millis() as f64
+                    - result.server_timing.unwrap_or_default().as_millis() as f64;
                 speeds.push((speed_mbps, latency_ms));
             }
             Err(err) => {
@@ -37,12 +38,12 @@ pub async fn meansure_upload(size: usize, iterations: usize) -> Vec<(f64, f64)> 
     for i in 0..iterations {
         match upload_async(size).await {
             Ok(result) => {
-                let Some(transfer_time) = result.server_timing else {
-                    eprintln!("No server timing info for upload (iteration {})", i + 1);
-                    continue;
-                };
-                let speed_mbps = size_f64 * 8.0 / transfer_time.as_secs_f64() / 1_000_000.0;
-                let latency_ms = (result.ttfb - result.server_processing).as_millis() as f64;
+                let transfer_time = result
+                    .server_timing
+                    .map(|d| d.as_millis() as f64)
+                    .unwrap_or(1.0);
+                let speed_mbps = (size_f64 * 8.0) / (transfer_time / 1000.0) / 1e6;
+                let latency_ms = result.ttfb.as_millis() as f64 - transfer_time;
                 speeds.push((speed_mbps, latency_ms));
             }
             Err(err) => {
@@ -141,7 +142,8 @@ fn measure_request(opts: RequestOptions) -> eyre::Result<MeasurementResult> {
                     return true;
                 };
                 if let Some(dur) = header_str
-                    .strip_prefix("Server-Timing: cfRequestDuration;dur=")
+                    .to_lowercase()
+                    .strip_prefix("server-timing: cfrequestduration;dur=")
                     .and_then(|s| s.trim().parse::<f64>().ok())
                 {
                     server_timing = Some(std::time::Duration::from_millis(dur as u64));
@@ -154,15 +156,9 @@ fn measure_request(opts: RequestOptions) -> eyre::Result<MeasurementResult> {
             .wrap_err_with(|| "Performing curl request")?;
     }
 
-    let pretransfer = handle
-        .pretransfer_time()
-        .wrap_err_with(|| "Getting pretransfer time")?;
-
     let starttransfer = handle
         .starttransfer_time()
         .wrap_err_with(|| "Getting starttransfer time")?;
-
-    let server_processing = starttransfer - pretransfer;
 
     let total = handle.total_time().wrap_err_with(|| "Getting total time")?;
 
@@ -170,7 +166,6 @@ fn measure_request(opts: RequestOptions) -> eyre::Result<MeasurementResult> {
         server_timing,
         ttfb: starttransfer,
         total_time: total,
-        server_processing,
     })
 }
 
@@ -238,12 +233,19 @@ fn join(endpoint: &str) -> String {
     format!("{}{}", SPEED_URL, endpoint)
 }
 
-#[derive(Debug, serde::Deserialize, Clone)]
+#[derive(Debug, serde::Deserialize, Clone, serde::Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Metadata {
     pub city: String,
     pub client_ip: String,
     pub country: String,
+    pub asn: u32,
+    pub as_organization: String,
+    pub region: String,
+    pub postal_code: String,
+    pub longitude: String,
+    pub latitude: String,
+    pub colo: String,
 }
 
 #[derive(Debug, Clone)]
@@ -293,7 +295,6 @@ impl RequestOptions {
 #[derive(Debug, Clone, Copy)]
 pub struct MeasurementResult {
     pub server_timing: Option<std::time::Duration>,
-    pub server_processing: std::time::Duration,
     pub ttfb: std::time::Duration,
     pub total_time: std::time::Duration,
 }
