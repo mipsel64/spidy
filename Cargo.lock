@@ -509,6 +509,7 @@ name = "spidy"
 version = "0.1.0"
 dependencies = [
  "clap",
+ "console",
  "constcat",
  "curl",
  "eyre",

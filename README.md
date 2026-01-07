@@ -92,31 +92,44 @@ If no tests are specified, the following default configuration is used:
 ### Text Format
 
 ```
-Cloudflare Speed Test Client
-=============================
-Server Location:    San Francisco US
+CLOUDFLARE SPEED TEST CLI
+=========================
+
+Server Location:    San Francisco - US
 ASN:                13335 (Cloudflare, Inc.)
 Your IP:            xxx.xxx.xxx.xxx
 
-Download Results:
-    (10/10)    100kB    125.34    Mbps
-    (8/8)      1MB      142.67    Mbps
-    (6/6)      10MB     158.92    Mbps
-Download Latency (Median):     12.45 ms
-Download Jitter:               2.34 ms
-Overall Download:
-    90th Percentile:    156.78    Mbps
-    75th Percentile:    148.23    Mbps
+Completed 8/8 tests in 42.46s
 
-Upload Results:
-    (8/8)      100kB    89.45     Mbps
-    (6/6)      1MB      95.23     Mbps
-    (4/4)      10MB     102.34    Mbps
-Upload Latency (Median): 15.67 ms
-Upload Jitter: 3.12 ms
+Latency details
+    Min:              116.00  ms
+    Max:              188.00  ms
+    Average:          138.15  ms
+    Median:           131.00  ms
+    Jitter:           22.05   ms
+    90th Percentile:  170.20  ms
+    75th Percentile:  143.50  ms
+
+Download details:
+    (10/10)  100kB  233.33  Mbps
+    (8/8)    1MB    59.26   Mbps
+    (6/6)    10MB   164.67  Mbps
+    (4/4)    25MB   194.37  Mbps
+Download Latency (Median):   131.50 ms
+Download Jitter:             26.36  ms
+Overall Download:
+    90th Percentile:  306.67  Mbps
+    75th Percentile:  200.15  Mbps
+
+Upload details:
+    (8/8)  100kB  2.74   Mbps
+    (6/6)  1MB    18.32  Mbps
+    (4/4)  10MB   38.60  Mbps
+Upload Latency (Median): 145.00 ms
+Upload Jitter:           306.38 ms
 Overall Upload:
-    90th Percentile:    98.56     Mbps
-    75th Percentile:    92.34     Mbps
+    90th Percentile:  38.18  Mbps
+    75th Percentile:  24.39  Mbps
 ```
 
 ### JSON Format
@@ -125,6 +138,7 @@ The JSON output includes:
 - Individual test results with all measurements
 - Aggregated statistics (percentiles, median latency, jitter)
 - Server metadata (location, ASN, IP information)
+- Latency stats
 
 ## How It Works
 
@@ -139,21 +153,6 @@ Spidy uses Cloudflare's speed test infrastructure to measure your internet conne
    - Jitter: Average absolute difference between consecutive latency measurements
    - Percentiles: Statistical distribution of all speed measurements
 
-## Dependencies
-
-- **tokio** - Async runtime
-- **curl** - HTTP requests with detailed timing information
-- **clap** - Command-line argument parsing
-- **serde/serde_json** - Serialization and JSON output
-- **indicatif** - Progress bars
-- **tabwriter** - Formatted text output
-- **parse-size** - Human-readable size parsing
-- **eyre** - Error handling
-
 ## License
 
-[Add your license here]
-
-## Contributing
-
-[Add contribution guidelines here]
+See [LICENSE](LICENSE) for details.

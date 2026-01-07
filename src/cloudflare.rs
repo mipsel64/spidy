@@ -54,6 +54,23 @@ pub async fn meansure_upload(size: usize, iterations: usize) -> Vec<(f64, f64)> 
     speeds
 }
 
+pub async fn meansure_latency() -> Vec<f64> {
+    let mut latencies = Vec::with_capacity(20);
+    for i in 0..20 {
+        match download_async(0).await {
+            Ok(result) => {
+                let latency_ms = result.ttfb.as_millis() as f64
+                    - result.server_timing.unwrap_or_default().as_millis() as f64;
+                latencies.push(latency_ms);
+            }
+            Err(err) => {
+                eprintln!("Error measuring latency (ping {}): {:?}", i + 1, err);
+            }
+        }
+    }
+    latencies
+}
+
 pub async fn download_async(size: usize) -> eyre::Result<MeasurementResult> {
     tokio::task::spawn_blocking(move || download(size))
         .await
@@ -236,15 +253,24 @@ fn join(endpoint: &str) -> String {
 #[derive(Debug, serde::Deserialize, Clone, serde::Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Metadata {
+    #[serde(default, skip_serializing_if = "String::is_empty")]
     pub city: String,
     pub client_ip: String,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
     pub country: String,
+    #[serde(default)]
     pub asn: u32,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
     pub as_organization: String,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
     pub region: String,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
     pub postal_code: String,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
     pub longitude: String,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
     pub latitude: String,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
     pub colo: String,
 }
 

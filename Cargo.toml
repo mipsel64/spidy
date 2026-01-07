@@ -14,3 +14,7 @@ curl = "0.4"
 parse-size = "1"
 indicatif = "0.18"
 tabwriter = "1"
+console = { version = "0.16", default-features = false, features = [
+  "ansi-parsing",
+  "std",
+] }

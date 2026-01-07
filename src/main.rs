@@ -1,4 +1,5 @@
 use clap::Parser;
+use console::Term;
 use eyre::Context;
 use indicatif::{ProgressBar, ProgressStyle};
 use parse_size::parse_size;
@@ -6,7 +7,10 @@ use std::io::Write;
 use std::str::FromStr;
 use tabwriter::TabWriter;
 
+use crate::helpers::{jitter, median, quartile};
+
 mod cloudflare;
+mod helpers;
 
 #[derive(clap::Parser)]
 struct Command {
@@ -35,6 +39,17 @@ struct TestLog {
     interations: usize,
 }
 
+#[derive(Debug, serde::Serialize, Default)]
+struct LatencyStats {
+    min: f64,
+    max: f64,
+    average: f64,
+    median: f64,
+    jitter: f64,
+    p90: f64,
+    p75: f64,
+}
+
 #[derive(Debug, Default, serde::Serialize)]
 struct Report {
     download_speeds: Vec<TestLog>,
@@ -56,6 +71,8 @@ struct Report {
 
     #[serde(skip_serializing_if = "Option::is_none")]
     metadata: Option<cloudflare::Metadata>,
+
+    latency: LatencyStats,
 }
 
 async fn run() -> eyre::Result<()> {
@@ -66,11 +83,13 @@ async fn run() -> eyre::Result<()> {
     let mut tw = TabWriter::new(std::io::stderr());
     tw.write_fmt(format_args!(
         "
-Cloudflare Speed Test Client
-=============================
-Server Location:\t{} {}
+CLOUDFLARE SPEED TEST CLI
+=========================
+
+Server Location:\t{} - {}
 ASN:\t{} ({})
 Your IP:\t{}
+
 ",
         metadata.city, metadata.country, metadata.asn, metadata.as_organization, metadata.client_ip
     ))?;
@@ -81,20 +100,49 @@ Your IP:\t{}
         ..Default::default()
     };
 
-    let pb = ProgressBar::new(tests.len() as u64);
+    let total_tests = tests.len() + 1; // Latency tests added
+    let pb = ProgressBar::new(total_tests as u64);
     pb.set_style(
-        ProgressStyle::with_template(
-            "{spinner:.green} [{elapsed_precise}] [{wide_bar:.cyan/blue}] {pos}/{len} test(s) ({eta})",
-        )
+        ProgressStyle::with_template(if Term::stdout().size().1 > 80 {
+            "{spinner:.green} [{elapsed_precise}] [{bar:20.cyan/blue}] {pos}/{len} {wide_msg}"
+        } else {
+            "{spinner:.green} [{elapsed_precise}] [{bar:20.cyan/blue}] {pos}/{len}"
+        })
         .wrap_err_with(|| "Creating progress bar style")?
         .progress_chars("#>-"),
     );
-
     let mut completed_tests = 0;
+
+    pb.set_message("Measuring latency");
+    let latencies = cloudflare::meansure_latency().await;
+    report.latency.min = *latencies
+        .iter()
+        .min_by(|a, b| a.partial_cmp(b).unwrap())
+        .unwrap_or(&0.0);
+    report.latency.max = *latencies
+        .iter()
+        .max_by(|a, b| a.partial_cmp(b).unwrap())
+        .unwrap_or(&0.0);
+    report.latency.average = if !latencies.is_empty() {
+        latencies.iter().sum::<f64>() / latencies.len() as f64
+    } else {
+        0.0
+    };
+    report.latency.median = median(&latencies);
+    report.latency.jitter = jitter(&latencies);
+    report.latency.p90 = quartile(&latencies, 0.9);
+    report.latency.p75 = quartile(&latencies, 0.75);
+    report.download_latencies.extend(latencies.clone());
+    report.upload_latencies.extend(latencies);
+
+    completed_tests += 1;
+    pb.set_position(completed_tests);
+
     let t0 = std::time::Instant::now();
     for test in &tests {
         match test.direction {
             Direction::Download => {
+                pb.set_message(format!("Measuring download {}", test.raw_size));
                 let result = cloudflare::meansure_download(test.size, test.iterations).await;
                 let (s, l) = result
                     .iter()
@@ -112,6 +160,7 @@ Your IP:\t{}
                 report.download_latencies.extend(l);
             }
             Direction::Upload => {
+                pb.set_message(format!("Measuring upload {}", test.raw_size));
                 let result = cloudflare::meansure_upload(test.size, test.iterations).await;
                 let (s, l) = result
                     .iter()
@@ -130,11 +179,16 @@ Your IP:\t{}
             }
         }
         completed_tests += 1;
-        pb.set_position(completed_tests as u64);
+        pb.set_position(completed_tests);
     }
     pb.finish_and_clear();
 
-    eprintln!("\nAll tests completed in {:.2?}\n", t0.elapsed());
+    eprintln!(
+        "Completed {}/{} tests in {:.2?}\n",
+        completed_tests,
+        total_tests,
+        t0.elapsed()
+    );
 
     report.download_p90 = quartile(&report.all_download_speeds, 0.9);
     report.download_p75 = quartile(&report.all_download_speeds, 0.75);
@@ -153,7 +207,20 @@ Your IP:\t{}
     }
 
     let mut tw = TabWriter::new(std::io::stdout());
-    tw.write_all(b"Download Results:\n")?;
+    tw.write_all(b"Latency details\n")?;
+    tw.write_fmt(format_args!(
+        "\tMin:\t{:.2}\tms\n\tMax:\t{:.2}\tms\n\tAverage:\t{:.2}\tms\n\tMedian:\t{:.2}\tms\n\tJitter:\t{:.2}\tms\n\t90th Percentile:\t{:.2}\tms\n\t75th Percentile:\t{:.2}\tms\n\n",
+        report.latency.min,
+        report.latency.max,
+        report.latency.average,
+        report.latency.median,
+        report.latency.jitter,
+        report.latency.p90,
+        report.latency.p75,
+    ))?;
+    tw.flush()?;
+
+    tw.write_all(b"Download details:\n")?;
     for log in &report.download_speeds {
         tw.write_fmt(format_args!(
             "\t({}/{})\t{}\t{:.2}\tMbps\n",
@@ -167,11 +234,11 @@ Your IP:\t{}
 
     let latency_median = report.download_median_latency;
     tw.write_fmt(format_args!(
-        "Download Latency (Median): \t{:.2} ms\n",
+        "Download Latency (Median):\t{:.2}\tms\n",
         latency_median
     ))?;
     tw.write_fmt(format_args!(
-        "Download Jitter: \t{:.2} ms\n",
+        "Download Jitter:\t{:.2}\tms\n",
         report.download_jitter
     ))?;
     tw.write_all(b"Overall Download:\n")?;
@@ -185,7 +252,7 @@ Your IP:\t{}
     ))?;
     tw.flush()?;
 
-    tw.write_all(b"\nUpload Results:\n")?;
+    tw.write_all(b"\nUpload details:\n")?;
     for log in &report.upload_speeds {
         tw.write_fmt(format_args!(
             "\t({}/{})\t{}\t{:.2}\tMbps\n",
@@ -198,11 +265,11 @@ Your IP:\t{}
     tw.flush()?;
 
     tw.write_fmt(format_args!(
-        "Upload Latency (Median): {:.2} ms\n",
+        "Upload Latency (Median):\t{:.2}\tms\n",
         report.upload_median_latency
     ))?;
     tw.write_fmt(format_args!(
-        "Upload Jitter: {:.2} ms\n",
+        "Upload Jitter:\t{:.2}\tms\n",
         report.upload_jitter
     ))?;
     tw.write_all(b"Overall Upload:\n")?;
@@ -296,46 +363,5 @@ impl FromStr for TestSpec {
             raw_size: parts[1].to_string(),
             iterations,
         })
-    }
-}
-
-fn quartile(data: &[f64], q: f64) -> f64 {
-    let mut sorted: Vec<f64> = data.to_vec();
-    if sorted.is_empty() {
-        return 0.0;
-    }
-    sorted.sort_unstable_by(|a, b| a.partial_cmp(b).unwrap());
-    let pos = q * (sorted.len() - 1) as f64;
-    let base = pos.floor() as usize;
-    let rest = pos - base as f64;
-    if base + 1 < sorted.len() {
-        sorted[base] + rest * (sorted[base + 1] - sorted[base])
-    } else {
-        sorted[base]
-    }
-}
-
-fn jitter(data: &[f64]) -> f64 {
-    if data.len() < 2 {
-        return 0.0;
-    }
-    let mut sum_diff = 0.0;
-    for i in 1..data.len() {
-        sum_diff += (data[i] - data[i - 1]).abs();
-    }
-    sum_diff / (data.len() - 1) as f64
-}
-
-fn median(data: &[f64]) -> f64 {
-    let mut sorted: Vec<f64> = data.to_vec();
-    if sorted.is_empty() {
-        return 0.0;
-    }
-    sorted.sort_unstable_by(|a, b| a.partial_cmp(b).unwrap());
-    let mid = sorted.len() / 2;
-    if sorted.len() % 2 == 0 {
-        (sorted[mid - 1] + sorted[mid]) / 2.0
-    } else {
-        sorted[mid]
     }
 }
