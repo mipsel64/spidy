@@ -1,6 +1,6 @@
 [package]
 name = "spidy"
-version = "0.1.0"
+version = "0.1.1"
 edition = "2024"
 description = "A fast, customizable CLI tool for testing your internet connection speed using Cloudflare's speed test infrastructure."
 license = "MIT"
@@ -13,23 +13,13 @@ exclude = ["/.github/", "/.gitignore"]
 name = "spidy"
 path = "src/main.rs"
 
-[profile.dev]
-opt-level = 0
-
-[profile.release]
-lto = true
-strip = true
-opt-level = 3
-codegen-units = 1
-panic = 'abort'
-
 [dependencies]
 tokio = { version = "1", features = ["full"] }
 eyre = "0.6"
 serde = { version = "1", features = ["derive"] }
 clap = { version = "4", features = ["derive", "env"] }
 serde_json = "1"
-curl = { version = "0.4", default-features = false, features = ["rustls"] }
+curl = { version = "0.4", default-features = false, features = ["ssl"] }
 parse-size = "1"
 indicatif = "0.18"
 tabwriter = "1"
