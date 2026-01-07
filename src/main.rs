@@ -11,6 +11,9 @@ use crate::helpers::{jitter, median, quartile};
 
 mod cloudflare;
 mod helpers;
+mod http_client;
+
+const DEFAULT_LATENCY_ITERATIONS: usize = 20;
 
 #[derive(clap::Parser)]
 struct Command {
@@ -78,7 +81,11 @@ struct Report {
 async fn run() -> eyre::Result<()> {
     let Command { tests, format } = Command::parse();
 
-    let metadata = cloudflare::get_metadata()?;
+    let total_tests =
+        tests.iter().map(|t| t.iterations).sum::<usize>() + DEFAULT_LATENCY_ITERATIONS;
+    let pb = ProgressBar::new(total_tests as u64);
+    let cf = cloudflare::Client::new(http_client::Curl).with_progress_bar(Some(pb.clone()));
+    let metadata = cf.get_metadata()?;
 
     let mut tw = TabWriter::new(std::io::stderr());
     tw.write_fmt(format_args!(
@@ -100,13 +107,11 @@ Your IP:\t{}
         ..Default::default()
     };
 
-    let total_tests = tests.len() + 1; // Latency tests added
-    let pb = ProgressBar::new(total_tests as u64);
     pb.set_style(
-        ProgressStyle::with_template(if Term::stdout().size().1 > 80 {
-            "{spinner:.green} [{elapsed_precise}] [{bar:20.cyan/blue}] {pos}/{len} {wide_msg}"
+        ProgressStyle::with_template(if Term::stdout().size().1 > 60 {
+            "{spinner:.green} [{elapsed_precise}] [{bar:20}] {pos}/{len} {wide_msg}"
         } else {
-            "{spinner:.green} [{elapsed_precise}] [{bar:20.cyan/blue}] {pos}/{len}"
+            "{spinner:.green} [{elapsed_precise}] [{bar:20}] {pos}/{len}"
         })
         .wrap_err_with(|| "Creating progress bar style")?
         .progress_chars("#>-"),
@@ -114,7 +119,7 @@ Your IP:\t{}
     let mut completed_tests = 0;
 
     pb.set_message("Measuring latency");
-    let latencies = cloudflare::meansure_latency().await;
+    let latencies = cf.meansure_latency(DEFAULT_LATENCY_ITERATIONS).await;
     report.latency.min = *latencies
         .iter()
         .min_by(|a, b| a.partial_cmp(b).unwrap())
@@ -136,14 +141,13 @@ Your IP:\t{}
     report.upload_latencies.extend(latencies);
 
     completed_tests += 1;
-    pb.set_position(completed_tests);
 
     let t0 = std::time::Instant::now();
     for test in &tests {
         match test.direction {
             Direction::Download => {
                 pb.set_message(format!("Measuring download {}", test.raw_size));
-                let result = cloudflare::meansure_download(test.size, test.iterations).await;
+                let result = cf.meansure_download(test.size, test.iterations).await;
                 let (s, l) = result
                     .iter()
                     .map(|s| (s.0, s.1))
@@ -161,7 +165,7 @@ Your IP:\t{}
             }
             Direction::Upload => {
                 pb.set_message(format!("Measuring upload {}", test.raw_size));
-                let result = cloudflare::meansure_upload(test.size, test.iterations).await;
+                let result = cf.meansure_upload(test.size, test.iterations).await;
                 let (s, l) = result
                     .iter()
                     .map(|s| (s.0, s.1))
@@ -179,14 +183,13 @@ Your IP:\t{}
             }
         }
         completed_tests += 1;
-        pb.set_position(completed_tests);
     }
     pb.finish_and_clear();
 
     eprintln!(
         "Completed {}/{} tests in {:.2?}\n",
         completed_tests,
-        total_tests,
+        tests.len() + 1, // +1 for latency test
         t0.elapsed()
     );
 
