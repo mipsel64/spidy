@@ -45,8 +45,8 @@ jobs:
         uses: Swatinem/rust-cache@779680da715d629ac1d338a641029a2f4372abb5 # v2.8.2
 
       - name: Build release binary (cargo)
-        run: cargo build --release
-
+        run: |
+          BUILD_TIME=$(date -u +"%Y-%m-%dT%H:%M:%SZ") cargo build --release
       - name: Prepare artifact
         run: |
           mkdir -p dist
@@ -102,4 +102,5 @@ jobs:
         uses: Swatinem/rust-cache@779680da715d629ac1d338a641029a2f4372abb5 # v2.8.2
 
       - name: Publish to crates.io
-        run: cargo publish --token ${{ secrets.CRATES_API_KEY }}
+        run: |
+          BUILD_TIME=$(date -u +"%Y-%m-%dT%H:%M:%SZ") cargo publish --token ${{ secrets.CRATES_API_KEY }}
