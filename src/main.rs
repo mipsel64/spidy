@@ -15,7 +15,21 @@ mod http_client;
 
 const DEFAULT_LATENCY_ITERATIONS: usize = 20;
 
+const GIT_SHA: &str = match option_env!("GIT_SHA") {
+    Some(s) => s,
+    None => match option_env!("GITHUB_SHA") {
+        Some(s) => s,
+        None => "unknown",
+    },
+};
+
+const BUILD_TIME: &str = match option_env!("BUILD_TIME") {
+    Some(s) => s,
+    None => "unknown",
+};
+
 #[derive(clap::Parser)]
+#[clap(disable_version_flag = true)]
 struct Command {
     /// Tests to run in the format <direction>=<human_bytes_format>=<iterations> (e.g., u=10MB=5)
     #[clap(
@@ -29,6 +43,10 @@ struct Command {
     /// Output format
     #[clap(long, short, value_enum, default_value_t = Format::Text)]
     format: Format,
+
+    /// Show version information
+    #[clap(long, short = 'V', action)]
+    version: bool,
 }
 
 #[derive(Debug, serde::Serialize)]
@@ -79,7 +97,20 @@ struct Report {
 }
 
 async fn run() -> eyre::Result<()> {
-    let Command { tests, format } = Command::parse();
+    let Command {
+        tests,
+        format,
+        version,
+    } = Command::parse();
+    if version {
+        println!(
+            "spidy version {} (commit: {}) built on {}",
+            env!("CARGO_PKG_VERSION"),
+            GIT_SHA,
+            BUILD_TIME
+        );
+        return Ok(());
+    }
 
     let total_tests =
         tests.iter().map(|t| t.iterations).sum::<usize>() + DEFAULT_LATENCY_ITERATIONS;

@@ -2,7 +2,7 @@ use std::collections::HashMap;
 
 use eyre::Context;
 
-pub trait HttpClient {
+pub trait HttpClient: Clone + Send {
     fn request(&self, opts: RequestOptions) -> eyre::Result<Response>;
 }
 

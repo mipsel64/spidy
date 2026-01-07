@@ -2,6 +2,7 @@
 name = "spidy"
 version = "0.1.0"
 edition = "2024"
+description = "A fast, customizable CLI tool for testing your internet connection speed using Cloudflare's speed test infrastructure."
 
 [dependencies]
 tokio = { version = "1", features = ["full"] }
