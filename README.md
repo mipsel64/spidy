@@ -20,7 +20,14 @@ A fast, customizable CLI tool for testing your internet connection speed using C
 git clone https://github.com/mipsel64/spidy.git
 cd spidt
 cargo build --release
-./target/release/spidy
+./target/release/spidy --hlep
+```
+
+### From [crates.io](https://crates.io/crates/spidy)
+
+```bash
+cargo install --locked spidy
+spidy --help
 ```
 
 ## Usage
