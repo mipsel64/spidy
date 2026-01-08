@@ -160,6 +160,22 @@ Spidy uses Cloudflare's speed test infrastructure to measure your internet conne
    - Jitter: Average absolute difference between consecutive latency measurements
    - Percentiles: Statistical distribution of all speed measurements
 
+## Proxy Support
+
+Spidy does not have proxy-related command line flags by design. The tool uses libcurl under the hood, which automatically respects standard proxy environment variables:
+
+- `HTTP_PROXY` / `http_proxy`
+- `HTTPS_PROXY` / `https_proxy`
+
+To use a proxy, simply set the appropriate environment variable:
+
+```bash
+export HTTPS_PROXY=http://proxy.example.com:8080
+spidy
+```
+
+This approach keeps the CLI simple and allows users to run `spidy` without specifying any flags.
+
 ## License
 
 See [LICENSE](LICENSE) for details.
