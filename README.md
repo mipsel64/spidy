@@ -93,6 +93,7 @@ If no tests are specified, the following default configuration is used:
 - Download 10MB × 6 iterations
 - Upload 10MB × 4 iterations
 - Download 25MB × 4 iterations
+- Download 100MB x 3 iterations
 
 ## Output
 
