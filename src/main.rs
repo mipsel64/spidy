@@ -116,9 +116,13 @@ async fn run() -> eyre::Result<()> {
         tests.iter().map(|t| t.iterations).sum::<usize>() + DEFAULT_LATENCY_ITERATIONS;
     let pb = ProgressBar::new(total_tests as u64);
     let cf = cloudflare::Client::new(http_client::Curl).with_progress_bar(Some(pb.clone()));
-    let metadata = cf.get_metadata()?;
+    let metadata = cf
+        .get_metadata()
+        .inspect_err(|e| eprintln!("Failed to get metadata: {:?}", e))
+        .ok();
 
     let mut tw = TabWriter::new(std::io::stderr());
+
     tw.write_fmt(format_args!(
         "
 CLOUDFLARE SPEED TEST CLI
@@ -129,12 +133,31 @@ ASN:\t{} ({})
 Your IP:\t{}
 
 ",
-        metadata.city, metadata.country, metadata.asn, metadata.as_organization, metadata.client_ip
+        metadata
+            .as_ref()
+            .map(|md| md.city.as_str())
+            .unwrap_or("N/A"),
+        metadata
+            .as_ref()
+            .map(|md| md.country.as_str())
+            .unwrap_or("N/A"),
+        metadata
+            .as_ref()
+            .map(|md| md.asn.to_string())
+            .unwrap_or("N/A".to_string()),
+        metadata
+            .as_ref()
+            .map(|md| md.as_organization.as_str())
+            .unwrap_or("N/A"),
+        metadata
+            .as_ref()
+            .map(|md| md.client_ip.as_str())
+            .unwrap_or("N/A"),
     ))?;
     tw.flush()?;
 
     let mut report = Report {
-        metadata: Some(metadata),
+        metadata,
         ..Default::default()
     };
 
