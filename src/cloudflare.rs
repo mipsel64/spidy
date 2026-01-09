@@ -34,8 +34,12 @@ where
                     .to_owned(),
             )
             .wrap_err_with(|| "Sending metadata request")?;
-        let meta: Metadata =
-            serde_json::from_slice(&resp.body).wrap_err_with(|| "Parsing metadata response")?;
+        let meta: Metadata = serde_json::from_slice(&resp.body).wrap_err_with(|| {
+            format!(
+                "Parsing metadata response: {:?}",
+                String::from_utf8_lossy(&resp.body)
+            )
+        })?;
         Ok(meta)
     }
 
@@ -161,7 +165,7 @@ pub struct Metadata {
     pub client_ip: String,
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub country: String,
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "skip_if_zero")]
     pub asn: u32,
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub as_organization: String,
@@ -173,8 +177,28 @@ pub struct Metadata {
     pub longitude: String,
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub latitude: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub colo: Option<Colo>,
+}
+
+#[derive(Debug, serde::Deserialize, serde::Serialize, Clone)]
+pub struct Colo {
     #[serde(default, skip_serializing_if = "String::is_empty")]
-    pub colo: String,
+    pub iata: String,
+    #[serde(default, skip_serializing_if = "skip_if_zero")]
+    pub lat: f64,
+    #[serde(default, skip_serializing_if = "skip_if_zero")]
+    pub lon: f64,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub cca2: String,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub region: String,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub city: String,
+}
+
+fn skip_if_zero<T: PartialEq + Default>(value: &T) -> bool {
+    *value == T::default()
 }
 
 #[cfg(test)]
@@ -261,7 +285,14 @@ mod tests {
             "postalCode": "94102",
             "longitude": "-122.4194",
             "latitude": "37.7749",
-            "colo": "SFO"
+            "colo": {
+                "iata": "SFO",
+                "lat": 37.6213,
+                "lon": -122.3790,
+                "cca2": "US",
+                "region": "California",
+                "city": "San Francisco"
+            }
         });
         Response {
             body: metadata_json.to_string().into_bytes(),
@@ -283,7 +314,10 @@ mod tests {
         assert_eq!(metadata.asn, 12345);
         assert_eq!(metadata.as_organization, "Test ISP");
         assert_eq!(metadata.region, "California");
-        assert_eq!(metadata.colo, "SFO");
+        assert!(
+            matches!(metadata.colo, Some(colo) if colo.iata == "SFO"),
+            "Colo iata code mismatch"
+        );
 
         // Verify the request was made correctly
         let requests = mock.get_requests();
@@ -497,7 +531,14 @@ mod tests {
             postal_code: "EC1A".to_string(),
             longitude: "-0.1276".to_string(),
             latitude: "51.5074".to_string(),
-            colo: "LHR".to_string(),
+            colo: Some(Colo {
+                iata: "LON".to_string(),
+                lat: 51.4700,
+                lon: -0.4543,
+                cca2: "GB".to_string(),
+                region: "England".to_string(),
+                city: "London".to_string(),
+            }),
         };
 
         let json = serde_json::to_string(&metadata).unwrap();

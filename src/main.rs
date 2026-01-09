@@ -35,7 +35,7 @@ struct Command {
     #[clap(
         long = "test",
         short,
-        default_value = "d=100kB=10,d=1MB=8,u=100kB=8,u=1MB=6,d=10MB=6,u=10MB=4,d=25MB=4",
+        default_value = "d=100kB=10,d=1MB=8,u=100kB=8,u=1MB=6,d=10MB=6,u=10MB=4,d=25MB=4,d=100MB=3",
         value_delimiter = ','
     )]
     tests: Vec<TestSpec>,
